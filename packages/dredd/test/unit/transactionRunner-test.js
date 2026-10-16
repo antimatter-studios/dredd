@@ -114,6 +114,48 @@ describe('TransactionRunner', () => {
       }));
   });
 
+  describe('warnIfRequestUriChangedAlone(transaction)', () => {
+    let configuredTransaction;
+
+    beforeEach(() => {
+      runner = new Runner(configuration);
+      configuredTransaction = runner.configureTransaction({
+        name: 'Machines API > Machines > Get a machine',
+        request: { uri: '/machines/{name}', method: 'GET', headers: {} },
+        response: { status: '200', headers: {} },
+        origin: {},
+        apiDescriptionMediaType: 'application/vnd.oai.openapi',
+      });
+      sinon.stub(loggerStub, 'warn');
+    });
+
+    afterEach(() => loggerStub.warn.restore());
+
+    it('warns when a hook changed only request.uri', () => {
+      configuredTransaction.request.uri = '/machines/willy';
+      runner.warnIfRequestUriChangedAlone(configuredTransaction);
+
+      assert.isTrue(loggerStub.warn.calledOnce);
+      const [message] = loggerStub.warn.firstCall.args;
+      assert.include(message, "changed request.uri to '/machines/willy'");
+      assert.include(message, 'transaction.fullPath');
+    });
+
+    it('stays quiet when the hook changed fullPath as well', () => {
+      configuredTransaction.request.uri = '/machines/willy';
+      configuredTransaction.fullPath = '/machines/willy';
+      runner.warnIfRequestUriChangedAlone(configuredTransaction);
+
+      assert.isFalse(loggerStub.warn.called);
+    });
+
+    it('stays quiet when no hook touched the request', () => {
+      runner.warnIfRequestUriChangedAlone(configuredTransaction);
+
+      assert.isFalse(loggerStub.warn.called);
+    });
+  });
+
   describe('configureTransaction(transaction)', () => {
     beforeEach(() => {
       transaction = {

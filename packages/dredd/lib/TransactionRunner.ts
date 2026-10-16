@@ -205,6 +205,8 @@ class TransactionRunner {
         throw this.hookHandlerError;
       }
 
+      this.warnIfRequestUriChangedAlone(transaction);
+
       // This method:
       // - skips and fails based on hooks or options
       // - executes a request
@@ -431,6 +433,8 @@ class TransactionRunner {
       configuredFullPath: fullPath,
       protocol: this.parsedUrl.protocol,
       skip,
+      // Kept so a hook that redirects the request through the wrong field can be spotted.
+      configuredUri: request.uri,
     };
 
     return configuredTransaction;
@@ -715,6 +719,29 @@ Not performing HTTP request for '${transaction.name}'.\
 
   // An actual HTTP request, before validation hooks triggering
   // and the response validation is invoked here
+  // A hook that rewrites request.uri is redirecting nothing: dredd resolved fullPath from the
+  // description document before any hook ran, and sends that. Rather than honour request.uri
+  // here - which would turn every such hook, including ones pointed at a DELETE, into a live
+  // request somewhere new - say so, and leave where the request goes alone.
+  warnIfRequestUriChangedAlone(transaction: any): void {
+    const { configuredUri, fullPath } = transaction;
+    const uri = transaction.request ? transaction.request.uri : undefined;
+
+    if (configuredUri == null || uri === configuredUri) {
+      return;
+    }
+    // A hook that set both is redirecting the request properly.
+    if (fullPath !== this.getFullPath(this.parsedUrl.path, configuredUri)) {
+      return;
+    }
+
+    logger.warn(
+      `A hook changed request.uri to '${uri}' for '${transaction.name}', but the request is ` +
+        `sent to '${fullPath}'. Dredd builds the URL from transaction.fullPath, which it ` +
+        'resolved before the hooks ran. Set transaction.fullPath to redirect the request.',
+    );
+  }
+
   performRequestAndValidate(
     test: any,
     transaction: any,
